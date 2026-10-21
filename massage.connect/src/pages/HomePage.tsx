@@ -7,15 +7,15 @@ import {
   ChevronLeft,
   ChevronRight,
   CirclePlay,
-  Clock3,
+
   Heart,
-  Leaf,
+
   MapPin,
   Menu,
   Radio,
   Search,
   ShieldCheck,
-  Sparkles,
+
   Ticket,
   X,
 } from "lucide-react";
