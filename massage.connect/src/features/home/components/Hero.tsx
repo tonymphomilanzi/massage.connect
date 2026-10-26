@@ -78,15 +78,21 @@ export default function Hero() {
   return (
     <section
       id="home"
-      className="relative flex min-h-[420px] items-center overflow-hidden bg-[#092b29] md:min-h-[475px]"
+      className="
+  relative flex min-h-[390px] items-end
+  overflow-hidden bg-[#092b29]
+  sm:min-h-[420px]
+  md:min-h-[475px] md:items-center
+"
     >
       {/* Background Image */}
       <div
         className="
-          absolute inset-0
-          bg-cover bg-[65%_center] bg-no-repeat
-          md:bg-center
-        "
+  absolute inset-0
+  bg-cover bg-[65%_center] bg-no-repeat
+  sm:bg-[60%_center]
+  md:bg-center
+"
         style={{
           backgroundImage:
             "url('https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=2000&q=90')",
@@ -95,39 +101,31 @@ export default function Hero() {
 
       {/* Desktop Gradient Overlay */}
       <div
-        className="
-          absolute inset-0
-          bg-gradient-to-r
-          from-[#061d1c]/95
-          via-[#061d1c]/75
-          to-[#061d1c]/10
-          md:from-[#061d1c]/95
-          md:via-[#061d1c]/65
-          md:to-transparent
-        "
+      className="
+  absolute inset-0
+  bg-gradient-to-b
+  from-[#061d1c]/10
+  via-[#061d1c]/25
+  to-[#061d1c]/95
+  md:bg-gradient-to-r
+  md:from-[#061d1c]/95
+  md:via-[#061d1c]/65
+  md:to-transparent
+"
       />
 
-      {/* Mobile Gradient */}
-      <div
-        className="
-          absolute inset-0
-          bg-gradient-to-t
-          from-[#061d1c]/90
-          via-transparent
-          to-transparent
-          md:hidden
-        "
-      />
+     
 
       {/* Hero Content */}
       <div
         className="
-          relative z-10
-          mx-auto w-full max-w-[1350px]
-          px-5 pb-8 pt-32
-          md:px-9 md:pb-12 md:pt-28
-          lg:px-[35px]
-        "
+  relative z-10
+  mx-auto w-full max-w-[1350px]
+  px-4 pb-5 pt-32
+  sm:px-5 sm:pb-8
+  md:px-9 md:pb-12 md:pt-28
+  lg:px-[35px]
+"
       >
         <div className="max-w-[590px]">
 
@@ -181,13 +179,14 @@ export default function Hero() {
           {/* Location Search */}
           <form
             onSubmit={handleSearch}
-            className="
-              mt-6 flex h-[48px] w-full
-              max-w-[510px] items-center
-              rounded-full bg-white
-              p-[5px] shadow-xl
-              md:mt-7 md:h-[52px]
-            "
+           className="
+  mt-4 flex h-[44px] w-full
+  max-w-[510px] items-center
+  rounded-full bg-white
+  p-[4px] shadow-xl
+  sm:h-[48px]
+  md:mt-7 md:h-[52px]
+"
           >
             <MapPin
               size={19}
@@ -201,14 +200,15 @@ export default function Hero() {
               onChange={(event) => setLocation(event.target.value)}
               placeholder="Enter your location"
               aria-label="Enter your location"
-              className="
-                h-full min-w-0 flex-1
-                bg-transparent px-3
-                text-[12px] text-[#183839]
-                outline-none
-                placeholder:text-[#8c999b]
-                md:text-[13px]
-              "
+             className="
+  h-full min-w-0 flex-1
+  bg-transparent px-2
+  text-[11px] text-[#183839]
+  outline-none
+  placeholder:text-[#8c999b]
+  sm:px-3 sm:text-[12px]
+  md:text-[13px]
+"
             />
 
             {/* Auto Location */}
