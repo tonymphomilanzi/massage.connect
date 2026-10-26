@@ -4,6 +4,7 @@ import PublicLayout from "@/layouts/PublicLayout";
 
 import HomePage from "@/pages/HomePage";
 import ClinicsPage from "@/pages/ClinicsPage";
+import ClinicDetailsPage from "@/pages/ClinicDetailsPage";
 
 export const router = createBrowserRouter([
   {
@@ -17,6 +18,10 @@ export const router = createBrowserRouter([
       {
         path: "clinics",
         element: <ClinicsPage />,
+      },
+      {
+        path: "clinics/:slug",
+        element: <ClinicDetailsPage />,
       },
     ],
   },
