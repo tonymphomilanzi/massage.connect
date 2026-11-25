@@ -1,0 +1,638 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
+
+enum RoleName {
+  USER
+  CLINIC_OWNER
+  CLINIC_STAFF
+  MODERATOR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DELETED
+}
+
+enum PublicationStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  REJECTED
+  HIDDEN
+  ARCHIVED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+  REVOKED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  UNPAID
+  PENDING
+  PAID
+  PARTIALLY_REFUNDED
+  REFUNDED
+  FAILED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  READY_FOR_PICKUP
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+// ----------------------------------------------------
+// 1. IDENTITY & PROFILES
+// ----------------------------------------------------
+
+model Profile {
+  id                 String             @id @db.Uuid // Matches Supabase auth.users.id
+  email              String             @unique
+  fullName           String?
+  displayName        String?
+  avatarUrl          String?
+  phone              String?
+  country            String?
+  city               String?
+  bio                String?
+
+  accountStatus      AccountStatus      @default(ACTIVE)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+
+  roles              UserRole[]
+  clinics            Clinic[]           @relation("ClinicOwner")
+  staffClinics       ClinicMember[]
+  posts              Post[]
+  events             Event[]
+  bookings           Booking[]          @relation("CustomerBookings")
+  reviews            ClinicReview[]
+  orders             Order[]            @relation("CustomerOrders")
+  favorites          Favorite[]
+
+  subscriptions      Subscription[]
+  usageCounters      UsageCounter[]
+  entitlementOverrides UserEntitlementOverride[]
+  auditLogs          AuditLog[]         @relation("ActorAuditLogs")
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@map("profiles")
+}
+
+model UserRole {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  role      RoleName @default(USER)
+
+  user      Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, role])
+  @@map("user_roles")
+}
+
+// ----------------------------------------------------
+// 2. CLINICS & SERVICES
+// ----------------------------------------------------
+
+model Clinic {
+  id                 String             @id @default(uuid()) @db.Uuid
+  ownerId            String             @db.Uuid
+
+  name               String
+  slug               String             @unique
+  description        String?            @db.Text
+  email              String?
+  phone              String?
+  website            String?
+
+  // Location
+  address            String?
+  city               String
+  country            String
+  postalCode         String?
+  latitude           Decimal?           @db.Decimal(10, 7)
+  longitude          Decimal?           @db.Decimal(10, 7)
+
+  // Status & Verification
+  publicationStatus  PublicationStatus  @default(PENDING_REVIEW)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  isFeatured         Boolean            @default(false)
+
+  // Rating Cache
+  averageRating      Decimal            @default(0.0) @db.Decimal(3, 2)
+  reviewCount        Int                @default(0)
+
+  owner              Profile            @relation("ClinicOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members            ClinicMember[]
+  services           ClinicService[]
+  images             ClinicImage[]
+  businessHours      ClinicBusinessHour[]
+  posts              Post[]
+  events             Event[]
+  bookings           Booking[]
+  reviews            ClinicReview[]
+  store              ClinicStore?
+  favorites          Favorite[]
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  deletedAt          DateTime?
+
+  @@index([ownerId])
+  @@index([city, country])
+  @@index([publicationStatus, isFeatured])
+  @@map("clinics")
+}
+
+model ClinicMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  clinicId  String   @db.Uuid
+  userId    String   @db.Uuid
+  role      String   @default("STAFF")
+
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user      Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([clinicId, userId])
+  @@map("clinic_members")
+}
+
+model ClinicService {
+  id          String    @id @default(uuid()) @db.Uuid
+  clinicId    String    @db.Uuid
+
+  name        String
+  description String?   @db.Text
+  duration    Int       // In minutes (e.g. 60, 90)
+  price       Decimal   @db.Decimal(10, 2)
+  currency    String    @default("USD")
+  isActive    Boolean   @default(true)
+
+  clinic      Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([clinicId])
+  @@map("clinic_services")
+}
+
+model ClinicImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  clinicId  String   @db.Uuid
+  url       String
+  isPrimary Boolean  @default(false)
+  sortOrder Int      @default(0)
+
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([clinicId])
+  @@map("clinic_images")
+}
+
+model ClinicBusinessHour {
+  id        String   @id @default(uuid()) @db.Uuid
+  clinicId  String   @db.Uuid
+  dayOfWeek Int      // 0 = Sunday, 6 = Saturday
+  openTime  String   // "09:00"
+  closeTime String   // "18:00"
+  isClosed  Boolean  @default(false)
+
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, dayOfWeek])
+  @@map("clinic_business_hours")
+}
+
+// ----------------------------------------------------
+// 3. CLINIC STORE & MARKETPLACE (Products)
+// ----------------------------------------------------
+
+model ClinicStore {
+  id          String        @id @default(uuid()) @db.Uuid
+  clinicId    String        @unique @db.Uuid
+
+  name        String
+  description String?       @db.Text
+  isEnabled   Boolean       @default(true)
+
+  clinic      Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  products    Product[]
+  orders      Order[]
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("clinic_stores")
+}
+
+model Product {
+  id          String        @id @default(uuid()) @db.Uuid
+  storeId     String        @db.Uuid
+
+  name        String
+  slug        String        @unique
+  description String?       @db.Text
+  price       Decimal       @db.Decimal(10, 2)
+  currency    String        @default("USD")
+  stock       Int           @default(0)
+  sku         String?
+
+  status      PublicationStatus @default(DRAFT)
+  category    String        @default("Massage Oil")
+
+  store       ClinicStore   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  images      ProductImage[]
+  orderItems  OrderItem[]
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  @@index([storeId, status])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @db.Uuid
+  url       String
+  isPrimary Boolean  @default(false)
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+model Order {
+  id            String        @id @default(uuid()) @db.Uuid
+  storeId       String        @db.Uuid
+  customerId    String        @db.Uuid
+
+  totalAmount   Decimal       @db.Decimal(10, 2)
+  currency      String        @default("USD")
+  orderStatus   OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(UNPAID)
+
+  customerNotes String?
+
+  store         ClinicStore   @relation(fields: [storeId], references: [id])
+  customer      Profile       @relation("CustomerOrders", fields: [customerId], references: [id])
+  items         OrderItem[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([storeId])
+  @@index([customerId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  orderId   String   @db.Uuid
+  productId String   @db.Uuid
+
+  quantity  Int
+  unitPrice Decimal  @db.Decimal(10, 2)
+
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// ----------------------------------------------------
+// 4. POSTS & CONTENT
+// ----------------------------------------------------
+
+model Post {
+  id          String            @id @default(uuid()) @db.Uuid
+  authorId    String            @db.Uuid
+  clinicId    String?           @db.Uuid
+
+  title       String
+  slug        String            @unique
+  content     String            @db.Text
+  excerpt     String?
+  coverImage  String?
+
+  status      PublicationStatus @default(DRAFT)
+  category    String            @default("Wellness Tips")
+
+  author      Profile           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  clinic      Clinic?           @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+
+  publishedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+
+  @@index([authorId])
+  @@index([clinicId])
+  @@index([status, publishedAt])
+  @@map("posts")
+}
+
+// ----------------------------------------------------
+// 5. EVENTS & TICKETS
+// ----------------------------------------------------
+
+model Event {
+  id          String            @id @default(uuid()) @db.Uuid
+  organizerId String            @db.Uuid
+  clinicId    String?           @db.Uuid
+
+  title       String
+  slug        String            @unique
+  description String            @db.Text
+  coverImage  String?
+
+  startsAt    DateTime
+  endsAt      DateTime
+  timeZone    String            @default("UTC")
+
+  isOnline    Boolean           @default(false)
+  location    String?
+  capacity    Int?
+
+  status      PublicationStatus @default(DRAFT)
+  isFeatured  Boolean           @default(false)
+
+  organizer   Profile           @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  clinic      Clinic?           @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  ticketTypes EventTicketType[]
+
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+
+  @@index([organizerId])
+  @@index([startsAt, status])
+  @@map("events")
+}
+
+model EventTicketType {
+  id          String   @id @default(uuid()) @db.Uuid
+  eventId     String   @db.Uuid
+
+  name        String
+  description String?
+  price       Decimal  @default(0.00) @db.Decimal(10, 2)
+  currency    String   @default("USD")
+
+  totalQty    Int
+  soldQty     Int      @default(0)
+
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tickets     Ticket[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([eventId])
+  @@map("event_ticket_types")
+}
+
+model Ticket {
+  id            String          @id @default(uuid()) @db.Uuid
+  ticketTypeId  String          @db.Uuid
+  userId        String          @db.Uuid
+
+  ticketCode    String          @unique
+  paymentStatus PaymentStatus   @default(PAID)
+
+  ticketType    EventTicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime        @default(now())
+
+  @@index([ticketTypeId])
+  @@index([userId])
+  @@map("tickets")
+}
+
+// ----------------------------------------------------
+// 6. APPOINTMENT BOOKINGS
+// ----------------------------------------------------
+
+model Booking {
+  id            String        @id @default(uuid()) @db.Uuid
+  clinicId      String        @db.Uuid
+  serviceId     String        @db.Uuid
+  customerId    String        @db.Uuid
+
+  bookingDate   DateTime      @db.Date
+  startTime     String
+  endTime       String
+
+  totalPrice    Decimal       @db.Decimal(10, 2)
+  currency      String        @default("USD")
+
+  status        BookingStatus @default(PENDING)
+  paymentStatus PaymentStatus @default(UNPAID)
+  notes         String?
+
+  clinic        Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  service       ClinicService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  customer      Profile       @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+
+  review        ClinicReview?
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([clinicId, bookingDate])
+  @@index([customerId])
+  @@map("bookings")
+}
+
+// ----------------------------------------------------
+// 7. REVIEWS & ENGAGEMENT
+// ----------------------------------------------------
+
+model ClinicReview {
+  id        String   @id @default(uuid()) @db.Uuid
+  clinicId  String   @db.Uuid
+  authorId  String   @db.Uuid
+  bookingId String?  @unique @db.Uuid
+
+  rating    Int
+  comment   String?  @db.Text
+  response  String?  @db.Text
+
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  author    Profile  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clinicId])
+  @@map("clinic_reviews")
+}
+
+model Favorite {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  clinicId  String   @db.Uuid
+
+  user      Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, clinicId])
+  @@map("favorites")
+}
+
+// ----------------------------------------------------
+// 8. PLANS, LIMITS & QUOTAS (ADMIN CONTROL SYSTEM)
+// ----------------------------------------------------
+
+model Plan {
+  id            String            @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String            @unique
+  description   String?
+  price         Decimal           @default(0.00) @db.Decimal(10, 2)
+  currency      String            @default("USD")
+  isActive      Boolean           @default(true)
+
+  entitlements  PlanEntitlement[]
+  subscriptions Subscription[]
+
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@map("plans")
+}
+
+model PlanEntitlement {
+  id          String   @id @default(uuid()) @db.Uuid
+  planId      String   @db.Uuid
+
+  featureKey  String
+  limitValue  Int?     // null means unlimited
+  isEnabled   Boolean  @default(true)
+
+  plan        Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureKey])
+  @@map("plan_entitlements")
+}
+
+model Subscription {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  planId      String   @db.Uuid
+
+  status      String   @default("ACTIVE")
+  startedAt   DateTime @default(now())
+  expiresAt   DateTime?
+
+  user        Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan        Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@map("subscriptions")
+}
+
+model UserEntitlementOverride {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+
+  featureKey  String
+  limitValue  Int?
+  reason      String?
+  expiresAt   DateTime?
+
+  user        Profile   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, featureKey])
+  @@map("user_entitlement_overrides")
+}
+
+model UsageCounter {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+
+  featureKey String
+  count      Int      @default(0)
+  periodKey  String
+
+  user       Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, featureKey, periodKey])
+  @@map("usage_counters")
+}
+
+// ----------------------------------------------------
+// 9. AUDIT LOGS & ADMIN SETTINGS
+// ----------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+
+  actor      Profile? @relation("ActorAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
