@@ -4,7 +4,7 @@ import {
   CalendarDays,
   MapPin,
   ArrowRight,
-  Clock3,
+  //Clock3,
 } from "lucide-react";
 
 import { featuredEvent } from "@/features/events/data/featuredEvents";
